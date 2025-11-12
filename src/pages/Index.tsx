@@ -2,7 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import Icon from '@/components/ui/icon';
+import MessageContent from '@/components/MessageContent';
+import { useToast } from '@/hooks/use-toast';
 
 interface Message {
   id: string;
@@ -18,12 +21,16 @@ interface Chat {
   createdAt: Date;
 }
 
+const API_URL = 'https://functions.poehali.dev/e73a5174-1a2d-4a7c-bad6-7b61d1486b08';
+
 const Index = () => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   const currentChat = chats.find(chat => chat.id === currentChatId);
 
@@ -44,8 +51,41 @@ const Index = () => {
     setCurrentChatId(newChat.id);
   };
 
-  const sendMessage = () => {
-    if (!inputValue.trim()) return;
+  const exportChatAsJSON = (chat: Chat) => {
+    const dataStr = JSON.stringify(chat, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `chat-${chat.id}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast({ title: 'Экспорт выполнен', description: 'Чат сохранён в JSON' });
+  };
+
+  const exportChatAsText = (chat: Chat) => {
+    let text = `${chat.title}\n`;
+    text += `Создан: ${new Date(chat.createdAt).toLocaleString('ru-RU')}\n\n`;
+    text += '='.repeat(50) + '\n\n';
+    
+    chat.messages.forEach(msg => {
+      text += `${msg.role === 'user' ? 'Пользователь' : 'Ассистент'}:\n`;
+      text += `${msg.content}\n\n`;
+      text += '-'.repeat(50) + '\n\n';
+    });
+    
+    const dataBlob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `chat-${chat.id}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast({ title: 'Экспорт выполнен', description: 'Чат сохранён в TXT' });
+  };
+
+  const sendMessage = async () => {
+    if (!inputValue.trim() || isLoading) return;
 
     let chatToUpdate = currentChat;
 
@@ -72,22 +112,42 @@ const Index = () => {
 
     if (updatedMessages.length === 1) {
       const title = inputValue.slice(0, 30) + (inputValue.length > 30 ? '...' : '');
-      setChats(chats.map(chat => 
+      setChats(prevChats => prevChats.map(chat => 
         chat.id === chatToUpdate!.id ? { ...chat, title, messages: updatedMessages } : chat
       ));
     } else {
-      setChats(chats.map(chat => 
+      setChats(prevChats => prevChats.map(chat => 
         chat.id === chatToUpdate!.id ? { ...chat, messages: updatedMessages } : chat
       ));
     }
 
     setInputValue('');
+    setIsLoading(true);
 
-    setTimeout(() => {
+    try {
+      const messagesToSend = updatedMessages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ messages: messagesToSend })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Ошибка при получении ответа');
+      }
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Я AI-ассистент. В этой демо-версии я пока не могу отвечать на ваши вопросы, но интерфейс полностью функционален и сохраняет историю диалогов.',
+        content: data.message,
         timestamp: new Date()
       };
 
@@ -96,7 +156,15 @@ const Index = () => {
           ? { ...chat, messages: [...chat.messages, assistantMessage] } 
           : chat
       ));
-    }, 500);
+    } catch (error) {
+      toast({
+        title: 'Ошибка',
+        description: error instanceof Error ? error.message : 'Не удалось получить ответ от AI',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const deleteChat = (chatId: string) => {
@@ -151,17 +219,39 @@ const Index = () => {
       </div>
 
       <div className="flex-1 flex flex-col">
-        <div className="p-4 border-b border-border flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-          >
-            <Icon name={sidebarOpen ? "PanelLeftClose" : "PanelLeftOpen"} size={20} />
-          </Button>
-          <h1 className="text-lg font-semibold">
-            {currentChat?.title || 'AI Ассистент'}
-          </h1>
+        <div className="p-4 border-b border-border flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+            >
+              <Icon name={sidebarOpen ? "PanelLeftClose" : "PanelLeftOpen"} size={20} />
+            </Button>
+            <h1 className="text-lg font-semibold">
+              {currentChat?.title || 'AI Ассистент'}
+            </h1>
+          </div>
+          
+          {currentChat && currentChat.messages.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Icon name="Download" size={20} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => exportChatAsJSON(currentChat)}>
+                  <Icon name="FileJson" size={16} className="mr-2" />
+                  Экспорт в JSON
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportChatAsText(currentChat)}>
+                  <Icon name="FileText" size={16} className="mr-2" />
+                  Экспорт в TXT
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         <ScrollArea className="flex-1 p-4" ref={scrollRef}>
@@ -190,7 +280,11 @@ const Index = () => {
                         ? 'bg-primary text-primary-foreground' 
                         : 'bg-card text-card-foreground border border-border'
                     }`}>
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                      {message.role === 'assistant' ? (
+                        <MessageContent content={message.content} />
+                      ) : (
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                      )}
                     </div>
                     {message.role === 'user' && (
                       <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
@@ -200,6 +294,20 @@ const Index = () => {
                   </div>
                 </div>
               ))}
+              {isLoading && (
+                <div className="flex gap-3 justify-start fade-in">
+                  <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
+                    <Icon name="Bot" size={18} className="text-primary-foreground" />
+                  </div>
+                  <div className="rounded-2xl px-4 py-3 bg-card text-card-foreground border border-border">
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse" style={{ animationDelay: '0.2s' }} />
+                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse" style={{ animationDelay: '0.4s' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </ScrollArea>
@@ -218,12 +326,13 @@ const Index = () => {
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder="Напишите сообщение..."
                 className="flex-1 bg-card border-input"
+                disabled={isLoading}
               />
               <Button 
                 type="submit" 
                 size="icon"
                 className="bg-primary hover:bg-primary/90"
-                disabled={!inputValue.trim()}
+                disabled={!inputValue.trim() || isLoading}
               >
                 <Icon name="Send" size={18} />
               </Button>
