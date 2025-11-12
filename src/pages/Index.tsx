@@ -27,7 +27,7 @@ const Index = () => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -49,6 +49,7 @@ const Index = () => {
     };
     setChats([newChat, ...chats]);
     setCurrentChatId(newChat.id);
+    setSidebarOpen(false);
   };
 
   const exportChatAsJSON = (chat: Chat) => {
@@ -176,8 +177,15 @@ const Index = () => {
 
   return (
     <div className="flex h-screen bg-background dark">
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      
       <div 
-        className={`${sidebarOpen ? 'w-64' : 'w-0'} transition-all duration-300 bg-sidebar border-r border-sidebar-border overflow-hidden flex flex-col`}
+        className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:relative z-50 w-64 md:w-64 transition-transform duration-300 bg-sidebar border-r border-sidebar-border flex flex-col h-full`}
       >
         <div className="p-4 border-b border-sidebar-border">
           <Button 
@@ -198,7 +206,10 @@ const Index = () => {
                   ? 'bg-sidebar-accent text-sidebar-accent-foreground' 
                   : 'hover:bg-sidebar-accent/50 text-sidebar-foreground'
               }`}
-              onClick={() => setCurrentChatId(chat.id)}
+              onClick={() => {
+                setCurrentChatId(chat.id);
+                setSidebarOpen(false);
+              }}
             >
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <Icon name="MessageSquare" size={16} className="flex-shrink-0" />
@@ -219,16 +230,17 @@ const Index = () => {
       </div>
 
       <div className="flex-1 flex flex-col">
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="p-3 md:p-4 border-b border-border flex items-center justify-between">
+          <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="flex-shrink-0"
             >
               <Icon name={sidebarOpen ? "PanelLeftClose" : "PanelLeftOpen"} size={20} />
             </Button>
-            <h1 className="text-lg font-semibold">
+            <h1 className="text-base md:text-lg font-semibold truncate">
               {currentChat?.title || 'AI Ассистент'}
             </h1>
           </div>
@@ -254,7 +266,7 @@ const Index = () => {
           )}
         </div>
 
-        <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+        <ScrollArea className="flex-1 p-3 md:p-4" ref={scrollRef}>
           {!currentChat || currentChat.messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center px-4">
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
@@ -275,7 +287,7 @@ const Index = () => {
                         <Icon name="Bot" size={18} className="text-primary-foreground" />
                       </div>
                     )}
-                    <div className={`rounded-2xl px-4 py-3 max-w-[80%] ${
+                    <div className={`rounded-2xl px-3 py-2 md:px-4 md:py-3 max-w-[85%] md:max-w-[80%] ${
                       message.role === 'user' 
                         ? 'bg-primary text-primary-foreground' 
                         : 'bg-card text-card-foreground border border-border'
@@ -312,7 +324,7 @@ const Index = () => {
           )}
         </ScrollArea>
 
-        <div className="p-4 border-t border-border">
+        <div className="p-3 md:p-4 border-t border-border safe-area-bottom">
           <div className="max-w-3xl mx-auto">
             <form 
               onSubmit={(e) => {
@@ -325,13 +337,13 @@ const Index = () => {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder="Напишите сообщение..."
-                className="flex-1 bg-card border-input"
+                className="flex-1 bg-card border-input text-base"
                 disabled={isLoading}
               />
               <Button 
                 type="submit" 
                 size="icon"
-                className="bg-primary hover:bg-primary/90"
+                className="bg-primary hover:bg-primary/90 flex-shrink-0"
                 disabled={!inputValue.trim() || isLoading}
               >
                 <Icon name="Send" size={18} />
